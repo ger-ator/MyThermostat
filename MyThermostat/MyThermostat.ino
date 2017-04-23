@@ -1,5 +1,5 @@
 // Enable debug prints to serial monitor
-#define MY_DEBUG
+//#define MY_DEBUG
 
 // Enable and select radio type attached
 #define MY_RADIO_NRF24
@@ -48,6 +48,7 @@ PID myPID(&pv, &out, &sp, KP, KI, KD, DIRECT);
 OneWire oneWire(PIN_TEMP);
 DallasTemperature sensors(&oneWire);
 DeviceAddress sondaTermometro = {0x28, 0xFF, 0x00, 0xDC, 0x86, 0x16, 0x05, 0x91};
+double last_send_pv;
 
 /*
  * Display I2C de 16x2 caracteres
@@ -77,14 +78,16 @@ MyMessage msg_demand(0, V_PERCENTAGE);
 /*
  * Temporizado
  */
-#define DALLAS_SAMPLE_RATE 5100 //ms
+#define DALLAS_SAMPLE_RATE 9100 //ms
+#define PV_SEND_RATE 61000 //ms
 #define PID_SAMPLE_RATE 10000 //ms
-#define LONG_PRESS 2000 //ms
-#define BACKLIGHT_TIME 10000 //ms
+#define LONG_PRESS 2100 //ms
+#define BACKLIGHT_TIME 7100 //ms
 unsigned long timing_dallas;
 unsigned long timing_pid;
 unsigned long timing_pressed;
 unsigned long timing_lcdbacklight;
+unsigned long timing_pv_send;
 
 /*
  * Misc
@@ -115,12 +118,11 @@ void setup()
    */
   sensors.begin();
   sensors.setResolution(sondaTermometro, 12);
-  sensors.requestTemperaturesByAddress(sondaTermometro);
+  sensors.requestTemperatures();
   pv = sensors.getTempC(sondaTermometro);
   sensors.setWaitForConversion(false);
-  sensors.requestTemperaturesByAddress(sondaTermometro);
+  sensors.requestTemperatures();
   
-
   /*
    * Iniciar pantalla
    */
@@ -144,12 +146,14 @@ void setup()
    * Enviar estado inicial al controlador y al nodo esclavo
    */
   send(msg_temp.set(pv, 1));
+  last_send_pv = pv;
   send(msg_setpoint.set(sp, 1));
   send(msg_status.set(ts_status).setDestination(0));
   send(msg_status.set(ts_status).setDestination(slave_node));
 
   timing_dallas = millis();
   timing_pid = millis();
+  timing_pv_send = millis();
 }
 
 void presentation()
@@ -162,16 +166,20 @@ void presentation()
 void loop()
 {
   /*
-   * Lectura del sensor de temperatura
+   * Lectura del sensor de temperatura y envio al controlador
    */
   if((unsigned long)(millis() - timing_dallas) >= DALLAS_SAMPLE_RATE) {
-    double last_pv = pv;
     pv = sensors.getTempC(sondaTermometro);
-    sensors.requestTemperaturesByAddress(sondaTermometro);
-    if (pv != last_pv) {
-      send(msg_temp.set(pv, 1));
-    }
+    sensors.requestTemperatures();
     timing_dallas = millis();
+  }
+
+  if((unsigned long)(millis() - timing_pv_send) >= PV_SEND_RATE) {
+    if (last_send_pv != pv) {
+      send(msg_temp.set(pv, 1));
+      last_send_pv = pv;
+    }
+    timing_pv_send = millis();
   }
 
   /*
