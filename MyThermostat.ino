@@ -15,10 +15,12 @@
 #include <MySensors.h>
 
 #define SN "MyThermostat"
-#define SV "1.0"
+#define SV "2.0"
 
+#include <stdio.h>
 #include <Keypad.h>
-#include <U8x8lib.h>
+#include <SSD1306Ascii.h>
+#include <SSD1306AsciiAvrI2c.h>
 #include <PID_v1.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
@@ -72,7 +74,9 @@ double tempProteccion;
 /*
  * Display OLED I2C 0,96"
  */
-U8X8_SSD1306_128X64_NONAME_HW_I2C u8x8(U8X8_PIN_NONE);
+// 0X3C+SA0 - 0x3C or 0x3D
+#define I2C_ADDRESS 0x3C
+SSD1306AsciiAvrI2c oled;
 bool standby;
 
 /*
@@ -95,11 +99,7 @@ bool ts_status = false; //true: ON - false: OFF
 MyMessage msg_setpoint(0, V_HVAC_SETPOINT_HEAT);
 MyMessage msg_temp(0, V_TEMP);
 MyMessage msg_status(0, V_STATUS);
-
-/*
- * S_TEMP
- */
-MyMessage msg_tempProteccion(1, V_TEMP);
+double temp_anterior;
 
 /*
  * Temporizado
@@ -107,7 +107,7 @@ MyMessage msg_tempProteccion(1, V_TEMP);
 #define DUTY_CYCLE 10000 //ms
 #define DALLAS_RATE 2000 //ms
 #define BACKLIGHT_TIME 37100 //ms
-#define REFRESH_RATE 177000 //ms
+#define REFRESH_RATE 300000 //ms //5min
 
 unsigned long timing_cycle;
 unsigned long timing_dallas;
@@ -151,10 +151,9 @@ void setup()
   /*
    * Iniciar pantalla
    */
-  u8x8.begin();
-  u8x8.setFont(u8x8_font_chroma48medium8_r);
-  u8x8.setPowerSave(0);
-  u8x8.clear();
+  oled.begin(&Adafruit128x64, I2C_ADDRESS);
+  oled.setFont(Adafruit5x7);
+  oled.set2X();
   standby = false;
 
   /*
@@ -176,10 +175,9 @@ void setup()
 void presentation()
 {
 	sendSketchInfo(SN, SV);
-  present(0, S_HEATER, "Radiador", REQ_ACK);
-  present(1, S_TEMP, "Temperatura de proteccion");
+  //present(0, S_HEATER, "Radiador", REQ_ACK);
+  present(0, S_HEATER);
 }
-
 
 void loop()
 {
@@ -201,40 +199,31 @@ void loop()
   if ((unsigned long)(millis() - timing_cycle) >= DUTY_CYCLE) timing_cycle = millis();
 
   /*
-   * Refresco de datos en el controlador
+   * Envio de temperatura al controlador si ha
+   * habido un cambio mayor a 0.1ºC
    */
   if((unsigned long)(millis() - timing_refresh) >= REFRESH_RATE) {
-    send(msg_temp.set(pv, 1));
-    send(msg_setpoint.set(sp, 1));
-    send(msg_status.set(ts_status));
-    send(msg_tempProteccion.set(tempProteccion, 1));
+    if ((pv >= temp_anterior + 0.1) || (pv <= temp_anterior - 0.1)) {
+      send(msg_temp.set(pv, 1));
+      temp_anterior = pv;
+    }    
     timing_refresh = millis();
   }
 
   /*
-   * Gestion del display
+   * Refresco del display y apagado tras un tiempo de inactividad
+   * del teclado.
+   * Cuando se apaga el display se asume la finalizacion de la entrada de datos 
+   * mediante teclado y se envian al controlador.
+   * Se realiza el salvado de datos en EEPROM aqui para minimizar el numero
+   * de escrituras.
    */
-  if (!standby && ((unsigned long)(millis() - timing_lcdbacklight) >= BACKLIGHT_TIME)) {
-    u8x8.setPowerSave(1);
-    standby = true;
-  } 
-  
-  if(!standby) {
-    u8x8.draw2x2String(0, 0, String(pv, 1).c_str());
-    u8x8.draw2x2String(8, 0, ts_status ? "| ON" : "|OFF");
-    if(tempProteccion > 55) {
-      u8x8.draw2x2String(0, 2, "-ALARMA-"); //Sacar un mensaje de alarma
-      timing_lcdbacklight = millis(); //No apagar pantalla para ver alarma
-    } else {
-      u8x8.draw2x2String(0, 2, "--------");
+  if (!standby) {
+    update_screen();
+    if ((unsigned long)(millis() - timing_lcdbacklight) >= BACKLIGHT_TIME) {
+      oled.ssd1306WriteCmd(SSD1306_DISPLAYOFF);
+      standby = true;
     }
-    u8x8.draw2x2String(0, 4, ("SP: " + String(sp, 1)).c_str()); 
-    String demanda = String((int)(out/100));
-    String titulo = "Out: ";
-    for (int i = 0; i < (3 - demanda.length()); i++) {
-      titulo += " ";
-    }
-    u8x8.draw2x2String(0, 6, (titulo + demanda).c_str());
   }
 
   /*
@@ -249,7 +238,7 @@ void keypadEvent(KeypadEvent key) {
     case PRESSED:
       timing_lcdbacklight = millis();
       if (standby) {
-        u8x8.setPowerSave(0);
+        oled.ssd1306WriteCmd(SSD1306_DISPLAYON);
         standby = false;
         break;
       }      
@@ -262,6 +251,19 @@ void keypadEvent(KeypadEvent key) {
       }
       break;
     }
+}
+
+void update_screen (void) {
+  oled.setCursor(0, 0);  
+  oled.print(pv, 1); oled.println(ts_status ? "| ON" : "|OFF");
+  if(tempProteccion > 55) {
+    oled.println("-ALARMA-"); //Sacar un mensaje de alarma
+    timing_lcdbacklight = millis(); //No apagar pantalla para ver alarma
+  } else {
+    oled.println("--------");
+  }
+  oled.print("SP: "); oled.println(sp, 1);
+  oled.print("Out: "); oled.print((int)(out/100)); oled.println(" ");
 }
   
 /*
@@ -322,5 +324,7 @@ void receive(const MyMessage &message)
     setSetpoint(message.getFloat());
   } else if (message.type == V_STATUS) {
     setStatus(message.getBool());
+  } else if (message.type == V_TEMP) {
+    //PENDIENTE GESTIONAR TEMPERATURA REMOTA
   } 
 }
