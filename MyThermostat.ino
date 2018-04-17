@@ -82,8 +82,8 @@ bool standby;
 /*
  * Keypad de 2 filas y 2 columnas
  */
-const byte ROWS = 2; //four rows
-const byte COLS = 2; //three columns
+const byte ROWS = 2;
+const byte COLS = 2;
 byte rowPins[ROWS] = {4, 6};
 byte colPins[COLS] = {3, 5};
 char keys[ROWS][COLS] = {
