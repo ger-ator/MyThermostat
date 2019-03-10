@@ -1,24 +1,46 @@
 // Enable debug prints to serial monitor
 //#define MY_DEBUG
 
+//Dormitorio de invitados
+#define MY_NODE_ID 1
+//Salon
+//#define MY_NODE_ID 2
+//Dormitorio principal
+//#define MY_NODE_ID 3
+//Dormitorio de Javi
+//#define MY_NODE_ID 4
+//Dormitorio de Sergio
+//#define MY_NODE_ID 5
+//Pruebas
+//#define MY_NODE_ID 9
+
 // Enable and select radio type attached
 #define MY_RADIO_RFM69
+#define MY_RFM69_FREQUENCY RFM69_433MHZ
 #define MY_IS_RFM69HW
-#define MY_RFM69_FREQUENCY RF69_433MHZ
-
-// Enable repeater functionality for this node
-//#define MY_REPEATER_FEATURE
+#define MY_RFM69_NETWORKID 99
 
 //Espera 5sg y entra al loop
 #define MY_TRANSPORT_WAIT_READY_MS 5000
+
+// OTA Firmware update settings
+#define MY_OTA_FIRMWARE_FEATURE
+#define OTA_WAIT_PERIOD 300
+#define FIRMWARE_MAX_REQUESTS 2
+#define MY_OTA_RETRY 2
+
+// Signing setup
+#define MY_SIGNING_ATSHA204
+#define MY_SIGNING_REQUEST_SIGNATURES
 
 #include <MySensors.h>
 
 #define SN "MyThermostat"
 #define SV "1.0"
 
+#include <stdio.h>
 #include <Keypad.h>
-#include <U8x8lib.h>
+#include <SSD1306AsciiAvrI2c.h>
 #include <PID_v1.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
@@ -26,7 +48,7 @@
 /*
  * Pines utilizados
  */
-#define PIN_RELAY 8
+#define PIN_RELAY A0
 #define PIN_TEMP  7
 
 /*
@@ -49,12 +71,12 @@ PID myPID(&pv, &out, &sp, KP, KI, KD, DIRECT);
  */
 OneWire oneWire(PIN_TEMP);
 DallasTemperature sensors(&oneWire);
+//Despacho
+DeviceAddress sondaControl = { 0x28, 0xFF, 0x16, 0x36, 0x86, 0x16, 0x04, 0x7D };
+DeviceAddress sondaProteccion = { 0x28, 0x52, 0x47, 0x81, 0x0A, 0x00, 0x00, 0xDA };
 //Salon
 //DeviceAddress sondaControl = { 0x28, 0xFF, 0x56, 0xE3, 0x86, 0x16, 0x05, 0x4A };
 //DeviceAddress sondaProteccion = { 0x10, 0xAB, 0x18, 0x3E, 0x02, 0x08, 0x00, 0x79 };
-//Despacho
-//DeviceAddress sondaControl = { 0x28, 0xFF, 0x16, 0x36, 0x86, 0x16, 0x04, 0x7D };
-//DeviceAddress sondaProteccion = { 0x10, 0xAE, 0xF8, 0x3D, 0x02, 0x08, 0x00, 0xC0 };
 //Dormitorio Principal
 //DeviceAddress sondaControl = { 0x28, 0xFF, 0x90, 0x99, 0x85, 0x16, 0x03, 0x7E };
 //DeviceAddress sondaProteccion = { 0x10, 0x1F, 0x31, 0x3E, 0x02, 0x08, 0x00, 0xA9 };
@@ -65,14 +87,19 @@ DallasTemperature sensors(&oneWire);
 //DeviceAddress sondaControl = { 0x28, 0xFF, 0x2D, 0xC0, 0x71, 0x17, 0x03, 0x41 };
 //DeviceAddress sondaProteccion = { 0x10, 0x7E, 0x09, 0x3E, 0x02, 0x08, 0x00, 0xE7 };
 //Pasillo
-DeviceAddress sondaControl = { 0x28, 0xFF, 0x65, 0x0B, 0x80, 0x17, 0x04, 0x9E };
-DeviceAddress sondaProteccion = { 0x28, 0xFF, 0xB7, 0x25, 0xB5, 0x16, 0x03, 0x8A };
+//DeviceAddress sondaControl = { 0x28, 0xFF, 0x65, 0x0B, 0x80, 0x17, 0x04, 0x9E };
+//DeviceAddress sondaProteccion = { 0x28, 0x0E, 0x4D, 0x81, 0x0A, 0x00, 0x00, 0x34 };
+//Test
+//DeviceAddress sondaControl = { 0x28, 0xFF, 0xC9, 0xA6, 0x71, 0x17, 0x03, 0x1D };
+//DeviceAddress sondaProteccion = { 0x28, 0x52, 0x47, 0x81, 0x0A, 0x00, 0x00, 0xDA };
 double tempProteccion;
 
 /*
  * Display OLED I2C 0,96"
  */
-U8X8_SSD1306_128X64_NONAME_HW_I2C u8x8(U8X8_PIN_NONE);
+// 0X3C+SA0 - 0x3C or 0x3D
+#define I2C_ADDRESS 0x3C
+SSD1306AsciiAvrI2c oled;
 bool standby;
 
 /*
@@ -80,39 +107,44 @@ bool standby;
  */
 const byte ROWS = 2; //four rows
 const byte COLS = 2; //three columns
-byte rowPins[ROWS] = {4, 6};
-byte colPins[COLS] = {3, 5};
+byte rowPins[ROWS] = {5, 3};
+byte colPins[COLS] = {6, 4};
 char keys[ROWS][COLS] = {
   {'-','+'},
   {'M','O'}
 };
 Keypad keypad = Keypad( makeKeymap(keys), rowPins, colPins, ROWS, COLS );
+bool sp_changed;
+bool ts_changed;
 
 /*
  * S_HEATER
  */
-bool ts_status = false; //true: ON - false: OFF
 MyMessage msg_setpoint(0, V_HVAC_SETPOINT_HEAT);
 MyMessage msg_temp(0, V_TEMP);
 MyMessage msg_status(0, V_STATUS);
-
+bool ts_status = false; //true: ON - false: OFF
+bool sp_ack_received = true;
+bool ts_ack_received = true;
+double temp_anterior;
 /*
  * S_TEMP
  */
-MyMessage msg_tempProteccion(1, V_TEMP);
+MyMessage msg_safetytemp(1, V_TEMP);
 
 /*
  * Temporizado
  */
 #define DUTY_CYCLE 10000 //ms
 #define DALLAS_RATE 2000 //ms
-#define BACKLIGHT_TIME 37100 //ms
-#define REFRESH_RATE 177000 //ms
+#define BACKLIGHT_TIME 17100 //ms
+#define REFRESH_RATE 300000 //ms //5min
 
 unsigned long timing_cycle;
 unsigned long timing_dallas;
 unsigned long timing_lcdbacklight;
 unsigned long timing_refresh;
+unsigned long timing_long_refresh;
 
 /*
  * Misc
@@ -147,14 +179,15 @@ void setup()
   sensors.setResolution(sondaProteccion, 9);
   sensors.requestTemperatures();
   sensors.setWaitForConversion(false);
+  pv = sensors.getTempC(sondaControl);
+  tempProteccion = sensors.getTempC(sondaProteccion);
     
   /*
    * Iniciar pantalla
    */
-  u8x8.begin();
-  u8x8.setFont(u8x8_font_chroma48medium8_r);
-  u8x8.setPowerSave(0);
-  u8x8.clear();
+  oled.begin(&Adafruit128x64, I2C_ADDRESS);
+  oled.setFont(font8x8);
+  oled.set2X();
   standby = false;
 
   /*
@@ -167,19 +200,26 @@ void setup()
    */
   keypad.addEventListener(keypadEvent);
 
+  /*  
+   * Envio del estado inicial al controlador.  
+   */
+   
+  refresh_data(true);
+  
   timing_cycle = millis();
   timing_dallas = 0;
   timing_refresh = millis();
+  timing_long_refresh = millis();
   timing_lcdbacklight = millis();
 }
 
 void presentation()
 {
 	sendSketchInfo(SN, SV);
-  present(0, S_HEATER, "Radiador", REQ_ACK);
-  present(1, S_TEMP, "Temperatura de proteccion");
+  present(0, S_HEATER);
+  wait(100);
+  present(1, S_TEMP);
 }
-
 
 void loop()
 {
@@ -201,40 +241,47 @@ void loop()
   if ((unsigned long)(millis() - timing_cycle) >= DUTY_CYCLE) timing_cycle = millis();
 
   /*
-   * Refresco de datos en el controlador
+   * Envio de temperatura al controlador si ha
+   * habido un cambio mayor a 0.1ºC
    */
+  if((unsigned long)(millis() - timing_long_refresh) >= 10 * REFRESH_RATE) {
+    refresh_data(true);
+    timing_long_refresh = millis();
+  }
+
+  
   if((unsigned long)(millis() - timing_refresh) >= REFRESH_RATE) {
-    send(msg_temp.set(pv, 1));
-    send(msg_setpoint.set(sp, 1));
-    send(msg_status.set(ts_status));
-    send(msg_tempProteccion.set(tempProteccion, 1));
+    refresh_data(false);
     timing_refresh = millis();
   }
 
   /*
-   * Gestion del display
+   * Refresco del display y apagado tras un tiempo de inactividad
+   * del teclado.
+   * Cuando se apaga el display se asume la finalizacion de la entrada de datos 
+   * mediante teclado y se envian al controlador.
+   * Se realiza el salvado de datos en EEPROM aqui para minimizar el numero
+   * de escrituras.
    */
-  if (!standby && ((unsigned long)(millis() - timing_lcdbacklight) >= BACKLIGHT_TIME)) {
-    u8x8.setPowerSave(1);
-    standby = true;
-  } 
-  
-  if(!standby) {
-    u8x8.draw2x2String(0, 0, String(pv, 1).c_str());
-    u8x8.draw2x2String(8, 0, ts_status ? "| ON" : "|OFF");
-    if(tempProteccion > 55) {
-      u8x8.draw2x2String(0, 2, "-ALARMA-"); //Sacar un mensaje de alarma
-      timing_lcdbacklight = millis(); //No apagar pantalla para ver alarma
-    } else {
-      u8x8.draw2x2String(0, 2, "--------");
+  if (!standby) {
+    update_screen();
+    if ((unsigned long)(millis() - timing_lcdbacklight) >= BACKLIGHT_TIME) {
+      display_off();
+      if(sp_changed) {
+        saveFloat(EEPROM_V_SETPOINT, sp);
+        wait(100);
+        send(msg_setpoint.set(sp, 1), REQ_ACK);
+        sp_changed = false;
+        sp_ack_received = false;     
+      }
+      if(ts_changed) {
+        saveState(EEPROM_V_STATUS, ts_status);
+        wait(100);
+        send(msg_status.set(ts_status), REQ_ACK);
+        ts_changed = false;
+        ts_ack_received = false;
+      }
     }
-    u8x8.draw2x2String(0, 4, ("SP: " + String(sp, 1)).c_str()); 
-    String demanda = String((int)(out/100));
-    String titulo = "Out: ";
-    for (int i = 0; i < (3 - demanda.length()); i++) {
-      titulo += " ";
-    }
-    u8x8.draw2x2String(0, 6, (titulo + demanda).c_str());
   }
 
   /*
@@ -249,7 +296,7 @@ void keypadEvent(KeypadEvent key) {
     case PRESSED:
       timing_lcdbacklight = millis();
       if (standby) {
-        u8x8.setPowerSave(0);
+        oled.ssd1306WriteCmd(SSD1306_DISPLAYON);
         standby = false;
         break;
       }      
@@ -258,12 +305,37 @@ void keypadEvent(KeypadEvent key) {
         case '+': setSetpoint(sp + SP_INCDEC); break;
         case '-': setSetpoint(sp - SP_INCDEC); break;
         case 'M': break;
-        case 'O': setStatus(!ts_status); break;
+        case 'O': 
+          setStatus(!ts_status); 
+          ts_changed = true;
+          break;
       }
       break;
     }
 }
-  
+
+void update_screen (void) {
+  oled.setCursor(0, 0);  
+  oled.print(pv, 1); oled.println(ts_status ? "| ON" : "|OFF");
+  if(tempProteccion > 55) {
+    oled.println("-ALARMA-"); //Sacar un mensaje de alarma
+  } else {
+    oled.println("--------");
+  }
+  oled.print("SP: "); oled.println(sp, 1);
+  int out_pcnt = 0;
+  out_pcnt = (int)(out/100);
+  if (out_pcnt < 10) {
+    oled.print("Out:   ");
+    oled.println(out_pcnt);
+  } else if (out_pcnt < 100) {
+    oled.print("Out:  ");
+    oled.println(out_pcnt);
+  } else {
+    oled.print("Out: 100");    
+  }
+}
+
 /*
  * Convierte un float a bytes y lo almacena
  * en posiciones de EEPROM
@@ -299,9 +371,8 @@ float loadFloat (const uint8_t pos) {
 void setSetpoint (float setpoint) {
   if ((setpoint != sp) && (setpoint >= 5.0) && (setpoint <= 30.0)) {
     sp = setpoint;
-    saveFloat(EEPROM_V_SETPOINT, sp);
-    send(msg_setpoint.set(sp, 1));
-  }
+    sp_changed = true;
+  } 
 }
 
 /*
@@ -310,17 +381,58 @@ void setSetpoint (float setpoint) {
 void setStatus (bool v_status) {
   if (v_status != ts_status) {
     ts_status = v_status;
-    saveState(EEPROM_V_STATUS, ts_status);
     myPID.SetMode(ts_status ? AUTOMATIC : MANUAL);
-    send(msg_status.set(ts_status));
+    ts_changed = true;    
+  }
+}
+
+void display_on (void) {
+  oled.ssd1306WriteCmd(SSD1306_DISPLAYON);
+  standby = false;
+  timing_lcdbacklight = millis();
+}
+
+void display_off (void) {
+  oled.ssd1306WriteCmd(SSD1306_DISPLAYOFF);
+  standby = true;  
+}
+
+void refresh_data (bool force) {
+  send(msg_safetytemp.set(tempProteccion, 1));
+  if ((pv >= temp_anterior + 0.1) || (pv <= temp_anterior - 0.1) || (force)) {
+    wait(100);
+    send(msg_temp.set(pv, 1));
+    temp_anterior = pv;
+  }
+  if ((!sp_ack_received) || (force)) {
+    wait(100);
+    send(msg_setpoint.set(sp, 1), REQ_ACK);
+  }
+  if ((!ts_ack_received) || (force)) {
+    wait(100);
+    send(msg_status.set(ts_status), REQ_ACK);
   }
 }
 
 void receive(const MyMessage &message)
 {
   if (message.type == V_HVAC_SETPOINT_HEAT) {
-    setSetpoint(message.getFloat());
+    if (message.isAck()) {
+      sp_ack_received = true;
+    }
+    else {
+      display_on();
+      setSetpoint(message.getFloat());
+    }
   } else if (message.type == V_STATUS) {
-    setStatus(message.getBool());
+    if (message.isAck()) {
+      ts_ack_received = true;
+    }
+    else {
+      display_on();
+      setStatus(message.getBool());
+    }
+  } else if (message.type == V_TEMP) {
+    //PENDIENTE GESTIONAR TEMPERATURA REMOTA
   } 
 }
