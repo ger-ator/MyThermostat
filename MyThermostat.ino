@@ -1,19 +1,6 @@
 // Enable debug prints to serial monitor
 //#define MY_DEBUG
 
-//Dormitorio de invitados
-#define MY_NODE_ID 1
-//Salon
-//#define MY_NODE_ID 2
-//Dormitorio principal
-//#define MY_NODE_ID 3
-//Dormitorio de Javi
-//#define MY_NODE_ID 4
-//Dormitorio de Sergio
-//#define MY_NODE_ID 5
-//Pruebas
-//#define MY_NODE_ID 9
-
 // Enable and select radio type attached
 #define MY_RADIO_RFM69
 #define MY_RFM69_FREQUENCY RFM69_433MHZ
@@ -34,16 +21,16 @@
 #define MY_SIGNING_REQUEST_SIGNATURES
 
 #include <MySensors.h>
-
-#define SN "MyThermostat"
-#define SV "1.0"
-
 #include <stdio.h>
 #include <Keypad.h>
 #include <SSD1306AsciiAvrI2c.h>
 #include <PID_v1.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
+
+
+#define SN "MyThermostat"
+#define SV "1.0"
 
 /*
  * Pines utilizados
@@ -56,6 +43,8 @@
  */
 #define EEPROM_V_SETPOINT 0
 #define EEPROM_V_STATUS 4
+#define EEPROM_SAFETY_ADDRESS 6
+#define EEPROM_CONTROL_ADDRESS 14
 
 /*
  * Controlador PID
@@ -71,28 +60,7 @@ PID myPID(&pv, &out, &sp, KP, KI, KD, DIRECT);
  */
 OneWire oneWire(PIN_TEMP);
 DallasTemperature sensors(&oneWire);
-//Despacho
-DeviceAddress sondaControl = { 0x28, 0xFF, 0x16, 0x36, 0x86, 0x16, 0x04, 0x7D };
-DeviceAddress sondaProteccion = { 0x28, 0x52, 0x47, 0x81, 0x0A, 0x00, 0x00, 0xDA };
-//Salon
-//DeviceAddress sondaControl = { 0x28, 0xFF, 0x56, 0xE3, 0x86, 0x16, 0x05, 0x4A };
-//DeviceAddress sondaProteccion = { 0x10, 0xAB, 0x18, 0x3E, 0x02, 0x08, 0x00, 0x79 };
-//Dormitorio Principal
-//DeviceAddress sondaControl = { 0x28, 0xFF, 0x90, 0x99, 0x85, 0x16, 0x03, 0x7E };
-//DeviceAddress sondaProteccion = { 0x10, 0x1F, 0x31, 0x3E, 0x02, 0x08, 0x00, 0xA9 };
-//Dormitorio de Javi
-//DeviceAddress sondaControl = { 0x28, 0xFF, 0xB1, 0x78, 0x71, 0x17, 0x03, 0x5A };
-//DeviceAddress sondaProteccion = { 0x10, 0x6F, 0x07, 0x3E, 0x02, 0x08, 0x00, 0x29 };
-//Dormitorio de Sergio
-//DeviceAddress sondaControl = { 0x28, 0xFF, 0x2D, 0xC0, 0x71, 0x17, 0x03, 0x41 };
-//DeviceAddress sondaProteccion = { 0x10, 0x7E, 0x09, 0x3E, 0x02, 0x08, 0x00, 0xE7 };
-//Pasillo
-//DeviceAddress sondaControl = { 0x28, 0xFF, 0x65, 0x0B, 0x80, 0x17, 0x04, 0x9E };
-//DeviceAddress sondaProteccion = { 0x28, 0x0E, 0x4D, 0x81, 0x0A, 0x00, 0x00, 0x34 };
-//Test
-//DeviceAddress sondaControl = { 0x28, 0xFF, 0xC9, 0xA6, 0x71, 0x17, 0x03, 0x1D };
-//DeviceAddress sondaProteccion = { 0x28, 0x52, 0x47, 0x81, 0x0A, 0x00, 0x00, 0xDA };
-double tempProteccion;
+DeviceAddress sondaControl, sondaProteccion;
 
 /*
  * Display OLED I2C 0,96"
@@ -131,6 +99,7 @@ double temp_anterior;
  * S_TEMP
  */
 MyMessage msg_safetytemp(1, V_TEMP);
+double tempProteccion;
 
 /*
  * Temporizado
@@ -174,6 +143,11 @@ void setup()
   /*
    * Configurar sensor Dallas y tomar primera lectura.
    */
+  for (uint8_t i = 0; i < 8; i++)
+  {
+    sondaControl[i] = loadState(EEPROM_CONTROL_ADDRESS + i);
+    sondaProteccion[i] = loadState(EEPROM_SAFETY_ADDRESS + i);
+  }
   sensors.begin();
   sensors.setResolution(sondaControl, 12);
   sensors.setResolution(sondaProteccion, 9);
