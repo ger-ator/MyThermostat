@@ -1,0 +1,5 @@
+# MyThermostat
+MyThermostat is a drop-in replacement board for Fahro Xana Plus oil heater.
+
+Provided sketch is a Proof of Concept thermostat node for MySensors network.
+
