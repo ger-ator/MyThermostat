@@ -1,6 +1,6 @@
 # MyThermostat
 
-![MyThermostat board](https://github.com/ger-ator/MyThermostat/raw/master/pics/v2_2.jpg)
+![MyThermostat board](https://github.com/ger-ator/MyThermostat/raw/master/pics/v2_1.jpg)
 
 MyThermostat is a drop-in replacement board for Farho Xana Plus oil heater.
 
