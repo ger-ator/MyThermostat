@@ -12,4 +12,5 @@ Provided sketch is a Proof of Concept thermostat node for MySensors network.
 - ATSHA204 for hardware signing
 - AT25DF512C flash for FOTA programming
 - Onboard DS18B20 for temperature protection purposes.
+- Oled display
 - Linear power supply, so no pitch noise around bedroom.
