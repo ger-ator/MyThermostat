@@ -1,7 +1,5 @@
 # MyThermostat
 
-![MyThermostat board](https://github.com/ger-ator/MyThermostat/raw/master/pics/v2_1.jpg)
-
 MyThermostat is a drop-in replacement board for Farho Xana Plus oil heater.
 
 Provided sketch is a draft thermostat node for MySensors network.
@@ -18,3 +16,5 @@ Provided sketch is a draft thermostat node for MySensors network.
 - Uses the original 2x2 keypad for user interaction.
 
 The board is exactly the same form factor as the factory one so it can be mounted without modifying the original frame. Just unplug the old board and drop-in the new one. The goal is to keep heater modifications as low as possible.
+
+![MyThermostat board](https://github.com/ger-ator/MyThermostat/raw/master/pics/v2_1.jpg)
