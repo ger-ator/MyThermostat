@@ -12,16 +12,12 @@
 
 // OTA Firmware update settings
 #define MY_OTA_FIRMWARE_FEATURE
-#define OTA_WAIT_PERIOD 300
-#define FIRMWARE_MAX_REQUESTS 2
-#define MY_OTA_RETRY 2
 
 // Signing setup
 #define MY_SIGNING_ATSHA204
 #define MY_SIGNING_REQUEST_SIGNATURES
 
 #include <MySensors.h>
-#include <stdio.h>
 #include <Keypad.h>
 #include <SSD1306AsciiAvrI2c.h>
 #include <PID_v1.h>
