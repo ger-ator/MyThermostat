@@ -207,7 +207,7 @@ void loop()
    * Evaluacion del lazo PID y actuacion rele.
    */
   myPID.Compute();   
-  digitalWrite(PIN_RELAY, (ts_status && (tempProteccion < 60) && ((unsigned long)(millis() - timing_cycle) < out)) ? HIGH : LOW);
+  digitalWrite(PIN_RELAY, (ts_status && (tempProteccion < 55) && ((unsigned long)(millis() - timing_cycle) < out)) ? HIGH : LOW);
   if ((unsigned long)(millis() - timing_cycle) >= DUTY_CYCLE) timing_cycle = millis();
 
   /*
@@ -287,7 +287,7 @@ void keypadEvent(KeypadEvent key) {
 void update_screen (void) {
   oled.setCursor(0, 0);  
   oled.print(pv, 1); oled.println(ts_status ? "| ON" : "|OFF");
-  if(tempProteccion > 55) {
+  if(tempProteccion > 50) {
     oled.println("-ALARMA-"); //Sacar un mensaje de alarma
   } else {
     oled.println("--------");
