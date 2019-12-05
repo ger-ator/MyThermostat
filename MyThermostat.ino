@@ -1,5 +1,5 @@
 #define SN "MyThermostat"
-#define SV "1.3"
+#define SV "1.4"
 // Enable debug prints to serial monitor
 //#define MY_DEBUG
 // Enable and select radio type attached
@@ -18,7 +18,6 @@
 #include <MySensors.h>
 #include <Keypad.h>
 #include "OledDisplay.h"
-#include <PID_v1.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
@@ -42,17 +41,8 @@
 OneWire oneWire(PIN_TEMP);
 DallasTemperature sensors(&oneWire);
 DeviceAddress room_sensor, safety_sensor;
-float safety_temp;
-double room_temp;
-
-/*
-   PID controller
-*/
-#define KP 10000
-#define KI 5
-#define KD 0
-double setpoint, pid_out;
-PID myPID(&room_temp, &pid_out, &setpoint, KP, KI, KD, DIRECT);
+float safety_temp, room_temp, setpoint;
+int power_out;
 
 /*
    Display OLED I2C 0,96"
@@ -71,7 +61,7 @@ char keys[ROWS][COLS] = {
   {'M', 'O'}
 };
 Keypad keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
-double kp_setpoint;
+float kp_setpoint;
 bool kp_ts_switch;
 
 /*
@@ -82,17 +72,11 @@ MyMessage msg_temp(0, V_TEMP);
 MyMessage msg_status(0, V_STATUS);
 bool ts_switch = false; //true: ON - false: OFF
 
-//typedef enum 
-//{ 
-//    ON,
-//    OFF    
-//} ts_switch;
-
-typedef enum 
+typedef enum
 {
-    NONE,
-    RECEIVED, 
-    PENDING
+  NONE,
+  RECEIVED,
+  PENDING
 } Ack;
 Ack setpoint_ack, ts_switch_ack = NONE;
 
@@ -116,28 +100,26 @@ unsigned long timing_ack_request;
 */
 #define REQ_ACK 1
 #define SP_INCDEC 0.5
+#define KEEP_TEMP_BAND 0.15
+#define FULL_POWER (DUTY_CYCLE)
+#define HALF_POWER (FULL_POWER / 2)
+#define ZERO_POWER 0
 
 void setup()
 {
   /*
-     Restaurar ultimo estado
+     Last status restore
   */
   setpoint = loadFloat(EEPROM_V_SETPOINT);
   ts_switch = loadState(EEPROM_V_STATUS);
-  if (isnan(setpoint) || (setpoint < 5.0) || (setpoint > 30.0)) setpoint = 20.0;
+  if (isnan(setpoint) 
+      || (setpoint < 5.0) 
+      || (setpoint > 30.0)) setpoint = 20.0;
+  power_out = 0;
 
   /*
-     Configurar controlador PID.
-     Salida: de 0-10000 ciclo de trabajo 10000ms.
-     Modo: AUTO/MAN en funcion del estado cargado.
-     SampleTime: 10sg:
-  */
-  myPID.SetOutputLimits(0, DUTY_CYCLE);
-  myPID.SetSampleTime(DUTY_CYCLE);
-  myPID.SetMode(ts_switch ? AUTOMATIC : MANUAL);
-
-  /*
-     Configurar sensor Dallas y tomar primera lectura.
+     Load sensor addresses, setup and take first reading.
+     Setup WaitForConversion for non blocking code.
   */
   for (uint8_t i = 0; i < 8; i++)
   {
@@ -153,29 +135,31 @@ void setup()
   safety_temp = sensors.getTempC(safety_sensor);
 
   /*
-     Iniciar pantalla
+     OLED 0,96" display library setup
   */
   oled.begin(&Adafruit128x64, I2C_ADDRESS);
   oled.setFont(font8x8);
   oled.set2X();
 
   /*
-     Configurar pin de salida del rele
+     Relay output setup
   */
   pinMode(PIN_RELAY, OUTPUT);
 
   /*
-     Keypad
+     Add event listener for 2x2 keypad
   */
   keypad.addEventListener(keypadEvent);
 
-  timing_cycle = millis();
-  timing_dallas = 0;
-  timing_temp_refresh = millis();
-  timing_ack_request = millis();
-  timing_lcdbacklight = millis();
+  /*
+     Initialize timing counters.
+  */
+  timing_cycle = timing_dallas = 0;
+  timing_temp_refresh = timing_ack_request = timing_lcdbacklight = millis();
 
-
+  /*
+     Send initial status to controller.
+  */
   send(msg_temp.set(room_temp, 1));
   send(msg_setpoint.set(setpoint, 1));
   send(msg_status.set(ts_switch));
@@ -192,7 +176,7 @@ void loop()
   /*
      Lectura de los sensores de temperatura locales.
   */
-  if ((unsigned long)(millis() - timing_dallas) >= DALLAS_RATE) {
+  if (millis() - timing_dallas >= DALLAS_RATE) {
     room_temp = sensors.getTempC(room_sensor);
     safety_temp = sensors.getTempC(safety_sensor);
     sensors.requestTemperatures();
@@ -200,24 +184,33 @@ void loop()
   }
 
   /*
-     Evaluacion del lazo PID y actuacion rele.
+     Power evaluation and relay actuation.
   */
-  myPID.Compute();
-  digitalWrite(PIN_RELAY, 
-    (ts_switch && 
-    (safety_temp < 55) && 
-    ((unsigned long)(millis() - timing_cycle) < pid_out)) ? HIGH : LOW);
-  if ((unsigned long)(millis() - timing_cycle) >= DUTY_CYCLE) timing_cycle = millis();
+  if (millis() - timing_cycle >= DUTY_CYCLE) {
+    if (room_temp < setpoint - KEEP_TEMP_BAND) {
+      power_out = FULL_POWER;
+    } else if (room_temp < setpoint + KEEP_TEMP_BAND) {
+      power_out =  HALF_POWER;
+    } else {
+      power_out = ZERO_POWER;
+    }
+    timing_cycle = millis();
+  }
+
+  digitalWrite(PIN_RELAY,
+                (ts_switch &&
+                (safety_temp < 55) &&
+                (millis() - timing_cycle < power_out)) ? HIGH : LOW);
 
   /*
      Send variables to controller
   */
-  if ((unsigned long)(millis() - timing_temp_refresh) >= REFRESH_RATE_13MIN) {
+  if (millis() - timing_temp_refresh >= REFRESH_RATE_13MIN) {
     send(msg_temp.set(room_temp, 1));
     timing_temp_refresh = millis();
   }
 
-  if ((unsigned long)(millis() - timing_ack_request) >= REFRESH_RATE_2MIN) {
+  if (millis() - timing_ack_request >= REFRESH_RATE_2MIN) {
     if (setpoint_ack == PENDING) {
       send(msg_setpoint.set(setpoint, 1), REQ_ACK);
     }
@@ -234,7 +227,7 @@ void loop()
   */
   if (oled.isEnabled()) {
     oled_refresh();
-    if ((unsigned long)(millis() - timing_lcdbacklight) >= BACKLIGHT_TIME) {
+    if (millis() - timing_lcdbacklight >= BACKLIGHT_TIME) {
       setSetpoint(kp_setpoint, true);
       setStatus(kp_ts_switch, true);
       oled.setDisabled();
@@ -274,15 +267,12 @@ void oled_refresh (void) {
   oled.print(room_temp, 1); oled.println(kp_ts_switch ? "| ON" : "|OFF");
   oled.println((safety_temp > 50) ? "-ALARMA-" : "--------");
   oled.print("SP: "); oled.println(kp_setpoint, 1);
-  int out_pcnt = (int)(pid_out / 100);
-  if (out_pcnt < 10) {
-    oled.print("Out:   ");
-    oled.println(out_pcnt);
-  } else if (out_pcnt < 100) {
-    oled.print("Out:  ");
-    oled.println(out_pcnt);
-  } else {
+  if (power_out == FULL_POWER) {
     oled.print("Out: 100");
+  } else if (power_out == HALF_POWER) {
+    oled.print("Out:  50");
+  } else {
+    oled.print("Out:   0");
   }
 }
 
@@ -342,7 +332,6 @@ bool setStatus (bool v_status, bool fromKeyPad) {
       ts_switch_ack = PENDING;
     }
     saveState(EEPROM_V_STATUS, ts_switch);
-    myPID.SetMode(ts_switch ? AUTOMATIC : MANUAL);
     return true;
   }
   return false;
