@@ -277,7 +277,7 @@ void oled_refresh (void) {
     oled.print("  0");
   } else {
     oled.print(" ");
-    oled.print((int)(power_out / 100));
+    oled.print((int)((power_out * 100) / FULL_POWER));
   }
 }
 
