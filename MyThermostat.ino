@@ -77,8 +77,8 @@ typedef enum
   NONE,
   RECEIVED,
   PENDING
-} Ack;
-Ack setpoint_ack, ts_switch_ack = NONE;
+} Echo;
+Echo setpoint_echo, ts_switch_echo = NONE;
 
 /*
    Temporizado
@@ -98,7 +98,7 @@ unsigned long timing_ack_request;
 /*
    Misc
 */
-#define REQ_ACK 1
+#define REQUEST_ECHO true
 #define SP_INCDEC 0.5
 #define KEEP_TEMP_BAND 0.2
 #define FULL_POWER (DUTY_CYCLE)
@@ -141,6 +141,7 @@ void setup()
   oled.begin(&Adafruit128x64, I2C_ADDRESS);
   oled.setFont(font8x8);
   oled.set2X();
+  oled.setEnabled();
 
   /*
      Relay output setup
@@ -151,6 +152,8 @@ void setup()
      Add event listener for 2x2 keypad
   */
   keypad.addEventListener(keypadEvent);
+  kp_setpoint = setpoint;
+  kp_ts_switch = ts_switch;
 
   /*
      Initialize timing counters.
@@ -214,11 +217,11 @@ void loop()
   }
 
   if (millis() - timing_ack_request >= REFRESH_RATE_2MIN) {
-    if (setpoint_ack == PENDING) {
-      send(msg_setpoint.set(setpoint, 1), REQ_ACK);
+    if (setpoint_echo == PENDING) {
+      send(msg_setpoint.set(setpoint, 1), REQUEST_ECHO);
     }
-    if (ts_switch_ack == PENDING)  {
-      send(msg_status.set(ts_switch), REQ_ACK);
+    if (ts_switch_echo == PENDING)  {
+      send(msg_status.set(ts_switch), REQUEST_ECHO);
     }
     timing_ack_request = millis();
   }
@@ -317,8 +320,8 @@ bool setSetpoint (float new_setpoint, bool fromKeyPad) {
   if ((new_setpoint != setpoint) && (new_setpoint >= 5.0) && (new_setpoint <= 30.0)) {
     setpoint = new_setpoint;
     if (fromKeyPad) {
-      send(msg_setpoint.set(setpoint, 1), REQ_ACK);
-      setpoint_ack = PENDING;
+      send(msg_setpoint.set(setpoint, 1), REQUEST_ECHO);
+      setpoint_echo = PENDING;
     }
     saveFloat(EEPROM_V_SETPOINT, setpoint);
     return true;
@@ -333,8 +336,8 @@ bool setStatus (bool v_status, bool fromKeyPad) {
   if (v_status != ts_switch) {
     ts_switch = v_status;
     if (fromKeyPad) {
-      send(msg_status.set(ts_switch), REQ_ACK);
-      ts_switch_ack = PENDING;
+      send(msg_status.set(ts_switch), REQUEST_ECHO);
+      ts_switch_echo = PENDING;
     }
     saveState(EEPROM_V_STATUS, ts_switch);
     return true;
@@ -345,13 +348,13 @@ bool setStatus (bool v_status, bool fromKeyPad) {
 void receive(const MyMessage &message)
 {
   if (message.type == V_HVAC_SETPOINT_HEAT) {
-    if (message.isAck())
-      setpoint_ack = RECEIVED;
+    if (message.isEcho())
+      setpoint_echo = RECEIVED;
     else
       setSetpoint(message.getFloat(), false);
   } else if (message.type == V_STATUS) {
-    if (message.isAck())
-      ts_switch_ack = RECEIVED;
+    if (message.isEcho())
+      ts_switch_echo = RECEIVED;
     else
       setStatus(message.getBool(), false);
   }
