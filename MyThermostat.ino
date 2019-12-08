@@ -100,9 +100,10 @@ unsigned long timing_ack_request;
 */
 #define REQ_ACK 1
 #define SP_INCDEC 0.5
-#define KEEP_TEMP_BAND 0.15
+#define KEEP_TEMP_BAND 0.2
 #define FULL_POWER (DUTY_CYCLE)
-#define HALF_POWER (FULL_POWER / 2)
+#define HIGH_POWER (FULL_POWER * 0.55)
+#define LOW_POWER (FULL_POWER * 0.35)
 #define ZERO_POWER 0
 
 void setup()
@@ -189,8 +190,10 @@ void loop()
   if (millis() - timing_cycle >= DUTY_CYCLE) {
     if (room_temp < setpoint - KEEP_TEMP_BAND) {
       power_out = FULL_POWER;
+    } else if (room_temp < setpoint) {
+      power_out =  HIGH_POWER;
     } else if (room_temp < setpoint + KEEP_TEMP_BAND) {
-      power_out =  HALF_POWER;
+      power_out =  LOW_POWER;
     } else {
       power_out = ZERO_POWER;
     }
@@ -267,12 +270,14 @@ void oled_refresh (void) {
   oled.print(room_temp, 1); oled.println(kp_ts_switch ? "| ON" : "|OFF");
   oled.println((safety_temp > 50) ? "-ALARMA-" : "--------");
   oled.print("SP: "); oled.println(kp_setpoint, 1);
+  oled.print("Out: ");
   if (power_out == FULL_POWER) {
-    oled.print("Out: 100");
-  } else if (power_out == HALF_POWER) {
-    oled.print("Out:  50");
+    oled.print("100");
+  } else if (power_out == ZERO_POWER) {
+    oled.print("  0");
   } else {
-    oled.print("Out:   0");
+    oled.print(" ");
+    oled.print((int)(power_out / 100));
   }
 }
 
