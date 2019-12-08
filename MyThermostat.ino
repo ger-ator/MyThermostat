@@ -70,7 +70,7 @@ bool kp_ts_switch;
 MyMessage msg_setpoint(0, V_HVAC_SETPOINT_HEAT);
 MyMessage msg_temp(0, V_TEMP);
 MyMessage msg_status(0, V_STATUS);
-bool ts_switch = false; //true: ON - false: OFF
+bool ts_switch; //true: ON - false: OFF
 
 typedef enum
 {
@@ -93,7 +93,7 @@ unsigned long timing_cycle;
 unsigned long timing_dallas;
 unsigned long timing_lcdbacklight;
 unsigned long timing_temp_refresh;
-unsigned long timing_ack_request;
+unsigned long timing_echo_request;
 
 /*
    Misc
@@ -159,7 +159,7 @@ void setup()
      Initialize timing counters.
   */
   timing_cycle = timing_dallas = 0;
-  timing_temp_refresh = timing_ack_request = timing_lcdbacklight = millis();
+  timing_temp_refresh = timing_echo_request = timing_lcdbacklight = millis();
 
   /*
      Send initial status to controller.
@@ -216,14 +216,14 @@ void loop()
     timing_temp_refresh = millis();
   }
 
-  if (millis() - timing_ack_request >= REFRESH_RATE_2MIN) {
+  if (millis() - timing_echo_request >= REFRESH_RATE_2MIN) {
     if (setpoint_echo == PENDING) {
       send(msg_setpoint.set(setpoint, 1), REQUEST_ECHO);
     }
     if (ts_switch_echo == PENDING)  {
       send(msg_status.set(ts_switch), REQUEST_ECHO);
     }
-    timing_ack_request = millis();
+    timing_echo_request = millis();
   }
 
   /*
