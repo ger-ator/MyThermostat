@@ -1,5 +1,5 @@
 #define SN "MyThermostat"
-#define SV "1.4"
+#define SV "1.5"
 // Enable debug prints to serial monitor
 //#define MY_DEBUG
 // Enable and select radio type attached
@@ -42,7 +42,6 @@ OneWire oneWire(PIN_TEMP);
 DallasTemperature sensors(&oneWire);
 DeviceAddress room_sensor, safety_sensor;
 float safety_temp, room_temp, setpoint;
-int power_out;
 
 /*
    Display OLED I2C 0,96"
@@ -100,11 +99,6 @@ unsigned long timing_echo_request;
 */
 #define REQUEST_ECHO true
 #define SP_INCDEC 0.5
-#define KEEP_TEMP_BAND 0.2
-#define FULL_POWER (DUTY_CYCLE)
-#define HIGH_POWER (FULL_POWER * 0.55)
-#define LOW_POWER (FULL_POWER * 0.35)
-#define ZERO_POWER 0
 
 void setup()
 {
@@ -113,10 +107,9 @@ void setup()
   */
   setpoint = loadFloat(EEPROM_V_SETPOINT);
   ts_switch = loadState(EEPROM_V_STATUS);
-  if (isnan(setpoint) 
-      || (setpoint < 5.0) 
+  if (isnan(setpoint)
+      || (setpoint < 5.0)
       || (setpoint > 30.0)) setpoint = 20.0;
-  power_out = 0;
 
   /*
      Load sensor addresses, setup and take first reading.
@@ -158,7 +151,7 @@ void setup()
   /*
      Initialize timing counters.
   */
-  timing_cycle = timing_dallas = 0;
+  timing_dallas = 0;
   timing_temp_refresh = timing_echo_request = timing_lcdbacklight = millis();
 
   /*
@@ -188,25 +181,14 @@ void loop()
   }
 
   /*
-     Power evaluation and relay actuation.
+     Relay actuation.
   */
   if (millis() - timing_cycle >= DUTY_CYCLE) {
-    if (room_temp < setpoint - KEEP_TEMP_BAND) {
-      power_out = FULL_POWER;
-    } else if (room_temp < setpoint) {
-      power_out =  HIGH_POWER;
-    } else if (room_temp < setpoint + KEEP_TEMP_BAND) {
-      power_out =  LOW_POWER;
-    } else {
-      power_out = ZERO_POWER;
-    }
-    timing_cycle = millis();
+    digitalWrite(PIN_RELAY,
+                  (ts_switch &&
+                  (safety_temp < 55) &&
+                  (room_temp < setpoint)) ? HIGH : LOW);
   }
-
-  digitalWrite(PIN_RELAY,
-                (ts_switch &&
-                (safety_temp < 55) &&
-                (millis() - timing_cycle < power_out)) ? HIGH : LOW);
 
   /*
      Send variables to controller
@@ -271,17 +253,9 @@ void keypadEvent(KeypadEvent key) {
 void oled_refresh (void) {
   oled.home();
   oled.print(room_temp, 1); oled.println(kp_ts_switch ? "| ON" : "|OFF");
-  oled.println((safety_temp > 50) ? "-ALARMA-" : "--------");
+  oled.println("--------");
   oled.print("SP: "); oled.println(kp_setpoint, 1);
-  oled.print("Out: ");
-  if (power_out == FULL_POWER) {
-    oled.print("100");
-  } else if (power_out == ZERO_POWER) {
-    oled.print("  0");
-  } else {
-    oled.print(" ");
-    oled.print((int)((power_out * 100) / FULL_POWER));
-  }
+  oled.print("Sfty: "); oled.println(safety_temp, 0);
 }
 
 /*
