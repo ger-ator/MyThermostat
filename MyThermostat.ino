@@ -151,7 +151,7 @@ void setup()
   /*
      Initialize timing counters.
   */
-  timing_dallas = 0;
+  timing_dallas = timing_cycle = 0;
   timing_temp_refresh = timing_echo_request = timing_lcdbacklight = millis();
 
   /*
@@ -184,10 +184,11 @@ void loop()
      Relay actuation.
   */
   if (millis() - timing_cycle >= DUTY_CYCLE) {
-    digitalWrite(PIN_RELAY,
-                  (ts_switch &&
+    digitalWrite(PIN_RELAY,                  
+                 (ts_switch &&
                   (safety_temp < 55) &&
                   (room_temp < setpoint)) ? HIGH : LOW);
+    timing_cycle = millis();
   }
 
   /*
