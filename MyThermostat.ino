@@ -70,6 +70,7 @@ MyMessage msg_setpoint(0, V_HVAC_SETPOINT_HEAT);
 MyMessage msg_temp(0, V_TEMP);
 MyMessage msg_status(0, V_STATUS);
 bool ts_switch; //true: ON - false: OFF
+bool heating_needed;
 
 typedef enum
 {
@@ -127,6 +128,7 @@ void setup()
   sensors.setWaitForConversion(false);
   room_temp = sensors.getTempC(room_sensor);
   safety_temp = sensors.getTempC(safety_sensor);
+  heating_needed = false;
 
   /*
      OLED 0,96" display library setup
@@ -182,14 +184,20 @@ void loop()
 
   /*
      Relay actuation.
+     Added heating_needed flag. It's updated every DUTY_CYCLE seconds 
+     to avoid fast switching of the SSR.
+     digitalWrite must be outside of the if statement to switch off 
+     relay without DUTY_CYCLE delay in case ts_switch toggles or 
+     safety_temp reaches setpoint.
   */
   if (millis() - timing_cycle >= DUTY_CYCLE) {
-    digitalWrite(PIN_RELAY,                  
-                 (ts_switch &&
-                  (safety_temp < 55) &&
-                  (room_temp < setpoint)) ? HIGH : LOW);
+    heating_needed = (room_temp < setpoint);
     timing_cycle = millis();
   }
+  digitalWrite(PIN_RELAY,
+               (ts_switch &&
+                safety_temp < 55 &&
+                heating_needed) ? HIGH : LOW);
 
   /*
      Send variables to controller
