@@ -184,10 +184,10 @@ void loop()
      Relay actuation.
   */
   if (millis() - timing_cycle >= DUTY_CYCLE) {
-    digitalWrite(PIN_RELAY,                  
+    digitalWrite(PIN_RELAY,
                  (ts_switch &&
-                  (safety_temp < 55) &&
-                  (room_temp < setpoint)) ? HIGH : LOW);
+                  safety_temp < 55 &&
+                  room_temp < setpoint) ? HIGH : LOW);
     timing_cycle = millis();
   }
 
