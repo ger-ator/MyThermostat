@@ -1,5 +1,5 @@
 #define SN "MyThermostat"
-#define SV "1.6"
+#define SV "1.7"
 // Enable debug prints to serial monitor
 //#define MY_DEBUG
 // Enable and select radio type attached
@@ -215,10 +215,10 @@ void loop()
   switch (m_state) {
     case INIT: {
         pid_out = 0;
-        if (room_temp < setpoint - 0.5) {
+        if (room_temp < setpoint - 0.3) {
           m_state = HEATING_UP;
         }
-        else if (room_temp > setpoint + 0.5) {
+        else if (room_temp > setpoint + 0.3) {
           m_state = COOLING_DOWN;
         }
         else m_state = HOLDING;
@@ -237,7 +237,7 @@ void loop()
         myPID.SetMode(MANUAL);
         pid_out = 0;
         if (room_temp < setpoint + 0.1) {
-          pid_out = 2000;
+          pid_out = 0;
           m_state = HOLDING;
         }
         break;
@@ -245,10 +245,10 @@ void loop()
     case HOLDING: {
         myPID.SetMode(AUTOMATIC);
         myPID.Compute();
-        if (room_temp < setpoint - 0.5) {
+        if (room_temp < setpoint - 0.3) {
           m_state = HEATING_UP;
         }
-        else if (room_temp > setpoint + 0.5) {
+        else if (room_temp > setpoint + 0.3) {
           m_state = COOLING_DOWN;
         }
         break;
