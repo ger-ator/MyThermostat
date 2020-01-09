@@ -43,6 +43,13 @@ DallasTemperature sensors(&oneWire);
 DeviceAddress room_sensor, safety_sensor;
 float safety_temp, room_temp, setpoint;
 
+typedef enum
+{
+  IN_HEATER_SENSOR,
+  REMOTE_SENSOR
+} T_mode;
+T_mode room_temp_mode = IN_HEATER_SENSOR;
+
 /*
    Display OLED I2C 0,96"
 */
@@ -87,12 +94,14 @@ Echo setpoint_echo, ts_switch_echo = NONE;
 #define BACKLIGHT_TIME 17100 //ms
 #define REFRESH_RATE_2MIN 120000 //ms
 #define REFRESH_RATE_13MIN 780000 //ms
+#define TEMPMODE_FALLBACK 900000 //ms //15MIN
 
 unsigned long timing_cycle;
 unsigned long timing_dallas;
 unsigned long timing_lcdbacklight;
 unsigned long timing_temp_refresh;
 unsigned long timing_echo_request;
+unsigned long timing_tempmode_fallback;
 
 /*
    Misc
@@ -151,7 +160,7 @@ void setup()
   /*
      Initialize timing counters.
   */
-  timing_dallas = timing_cycle = 0;
+  timing_dallas = timing_cycle = timing_tempmode_fallback = 0;
   timing_temp_refresh = timing_echo_request = timing_lcdbacklight = millis();
 
   /*
@@ -174,10 +183,18 @@ void loop()
      Lectura de los sensores de temperatura locales.
   */
   if (millis() - timing_dallas >= DALLAS_RATE) {
-    room_temp = sensors.getTempC(room_sensor);
+    if (room_temp_mode == IN_HEATER_SENSOR)
+      room_temp = sensors.getTempC(room_sensor);
     safety_temp = sensors.getTempC(safety_sensor);
     sensors.requestTemperatures();
     timing_dallas = millis();
+  }
+
+  /*
+     Fallback to internal sensor if no data received for X time
+  */
+  if (millis() - timing_tempmode_fallback >= TEMPMODE_FALLBACK) {
+    room_temp_mode = IN_HEATER_SENSOR;
   }
 
   /*
@@ -256,7 +273,7 @@ void oled_refresh (void) {
   oled.print(room_temp, 1); oled.println(kp_ts_switch ? "| ON" : "|OFF");
   oled.println("--------");
   oled.print("SP: "); oled.println(kp_setpoint, 1);
-  oled.print("Sfty: "); oled.println(safety_temp, 0);
+  oled.print(room_temp_mode == IN_HEATER_SENSOR ? "I" : "R");
 }
 
 /*
@@ -332,5 +349,9 @@ void receive(const MyMessage &message)
       ts_switch_echo = RECEIVED;
     else
       setStatus(message.getBool(), false);
+  } else if (message.type == V_TEMP) {
+    room_temp_mode = REMOTE_SENSOR;
+    timing_tempmode_fallback = millis();
+    room_temp = message.getFloat();
   }
 }
