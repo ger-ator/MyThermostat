@@ -270,13 +270,13 @@ void keypadEvent(KeypadEvent key) {
 
 void oled_refresh (void) {
   oled.home();
-  oled.print(room_temp, 1); oled.println(kp_ts_switch ? "| ON" : "|OFF");
-  oled.println("--------");
-  oled.print("SP: "); oled.println(kp_setpoint, 1);
-  oled.print(room_temp_mode == IN_HEATER_SENSOR ? "I" : "R");
-  if (safety_temp > 55) oled.println("  HI-HI");
-  else if (safety_temp > 50) oled.println("     HI");
-  else oled.println("     OK");  
+  oled.print(room_temp, 1); oled.println(kp_ts_switch ? F("| ON") : F("|OFF"));
+  oled.println(F("--------"));
+  oled.print(F("SP: ")); oled.println(kp_setpoint, 1);
+  oled.print(room_temp_mode == IN_HEATER_SENSOR ? F("I  ") : F("R  "));
+  if (safety_temp > 55) oled.println(F("HI-HI"));
+  else if (safety_temp > 50) oled.println(F("   HI"));
+  else oled.println(F("   OK"));  
 }
 
 /*
