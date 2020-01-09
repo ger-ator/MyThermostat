@@ -180,7 +180,7 @@ void presentation()
 void loop()
 {
   /*
-     Lectura de los sensores de temperatura locales.
+     Get local temperature sensors reading.
   */
   if (millis() - timing_dallas >= DALLAS_RATE) {
     if (room_temp_mode == IN_HEATER_SENSOR)
@@ -191,7 +191,7 @@ void loop()
   }
 
   /*
-     Fallback to internal sensor if no data received for X time
+     Fallback to internal sensor if no data received for X time.
   */
   if (millis() - timing_tempmode_fallback >= TEMPMODE_FALLBACK) {
     room_temp_mode = IN_HEATER_SENSOR;
@@ -209,13 +209,16 @@ void loop()
   }
 
   /*
-     Send variables to controller
+     Send room temperature to controller.
   */
   if (millis() - timing_temp_refresh >= REFRESH_RATE_13MIN) {
     send(msg_temp.set(room_temp, 1));
     timing_temp_refresh = millis();
   }
 
+  /*
+     Resend data that requested echo when echo is lost.
+  */
   if (millis() - timing_echo_request >= REFRESH_RATE_2MIN) {
     if (setpoint_echo == PENDING) {
       send(msg_setpoint.set(setpoint, 1), REQUEST_ECHO);
@@ -227,9 +230,8 @@ void loop()
   }
 
   /*
-     Refresco del display y apagado tras un tiempo de inactividad del teclado.
-     Cuando se apaga el display se asume la finalizacion de la entrada de datos
-     mediante teclado y se envian al controlador.
+     Display refresh and turn off when idle for BACKLIGHT_TIME ms.
+     When display is turned off modified data is stored.
   */
   if (oled.isEnabled()) {
     oled_refresh();
@@ -241,8 +243,8 @@ void loop()
   }
 
   /*
-     Realizar lectura del keypad.
-     No almaceno la lectura porque uso eventos
+     Read the keypad.
+     Further actions on event function.
   */
   keypad.getKey();
 }
@@ -276,12 +278,11 @@ void oled_refresh (void) {
   oled.print(room_temp_mode == IN_HEATER_SENSOR ? F("I  ") : F("R  "));
   if (safety_temp > 55) oled.println(F("HI-HI"));
   else if (safety_temp > 50) oled.println(F("   HI"));
-  else oled.println(F("   OK"));  
+  else oled.println(F("   OK"));
 }
 
 /*
-   Convierte un float a bytes y lo almacena
-   en posiciones de EEPROM
+   Turn float into 4 byte and store in EEPROM.
 */
 void saveFloat(const uint8_t pos, const float value) {
   union float_bytes {
@@ -295,7 +296,7 @@ void saveFloat(const uint8_t pos, const float value) {
 }
 
 /*
-   Carga bytes de la EEPROM y devuelve su float correspondiente
+   Load 4 bytes from EEPROM and turn to float.
 */
 float loadFloat (const uint8_t pos) {
   union float_bytes {
