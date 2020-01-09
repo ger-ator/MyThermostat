@@ -1,5 +1,5 @@
 #define SN "MyThermostat"
-#define SV "1.6"
+#define SV "1.5"
 // Enable debug prints to serial monitor
 //#define MY_DEBUG
 // Enable and select radio type attached
@@ -18,7 +18,6 @@
 #include <MySensors.h>
 #include <Keypad.h>
 #include "OledDisplay.h"
-#include <PID_v1.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
@@ -42,16 +41,7 @@
 OneWire oneWire(PIN_TEMP);
 DallasTemperature sensors(&oneWire);
 DeviceAddress room_sensor, safety_sensor;
-float safety_temp;
-
-/*
-   PID controller
-*/
-#define KP 10000
-#define KI 5
-#define KD 0
-double room_temp, setpoint, pid_out;
-PID myPID(&room_temp, &pid_out, &setpoint, KP, KI, KD, P_ON_E, DIRECT);
+float safety_temp, room_temp, setpoint;
 
 /*
    Display OLED I2C 0,96"
@@ -89,16 +79,6 @@ typedef enum
 } Echo;
 Echo setpoint_echo, ts_switch_echo = NONE;
 
-typedef enum
-{
-  INIT,
-  HEATING_UP,
-  COOLING_DOWN,
-  HOLDING,
-  FOTA_ONGOING
-} States;
-States m_state;
-
 /*
    Temporizado
 */
@@ -122,7 +102,6 @@ unsigned long timing_echo_request;
 
 void setup()
 {
-  m_state = INIT;
   /*
      Last status restore
   */
@@ -131,14 +110,6 @@ void setup()
   if (isnan(setpoint)
       || (setpoint < 5.0)
       || (setpoint > 30.0)) setpoint = 20.0;
-
-  /*
-     Configurar controlador PID.
-     Salida: de 0-10000 ciclo de trabajo 10000ms.
-     SampleTime: 10sg:
-  */
-  myPID.SetOutputLimits(0, DUTY_CYCLE);
-  myPID.SetSampleTime(DUTY_CYCLE);
 
   /*
      Load sensor addresses, setup and take first reading.
@@ -210,64 +181,18 @@ void loop()
   }
 
   /*
-     Heater power calc.
+     Relay actuation.
   */
-  switch (m_state) {
-    case INIT: {
-        pid_out = 0;
-        if (room_temp < setpoint - 0.5) {
-          m_state = HEATING_UP;
-        }
-        else if (room_temp > setpoint + 0.5) {
-          m_state = COOLING_DOWN;
-        }
-        else m_state = HOLDING;
-        break;
-      }
-    case HEATING_UP: {
-        myPID.SetMode(MANUAL);
-        pid_out = 10000;
-        if (room_temp > setpoint - 0.1) {
-          pid_out = 4000;
-          m_state = HOLDING;
-        }
-        break;
-      }
-    case COOLING_DOWN: {
-        myPID.SetMode(MANUAL);
-        pid_out = 0;
-        if (room_temp < setpoint + 0.1) {
-          pid_out = 2000;
-          m_state = HOLDING;
-        }
-        break;
-      }
-    case HOLDING: {
-        myPID.SetMode(AUTOMATIC);
-        myPID.Compute();
-        if (room_temp < setpoint - 0.5) {
-          m_state = HEATING_UP;
-        }
-        else if (room_temp > setpoint + 0.5) {
-          m_state = COOLING_DOWN;
-        }
-        break;
-      }
-    default:
-      break;
+  if (millis() - timing_cycle >= DUTY_CYCLE) {
+    digitalWrite(PIN_RELAY,
+                 (ts_switch &&
+                  safety_temp < 55 &&
+                  room_temp < setpoint) ? HIGH : LOW);
+    timing_cycle = millis();
   }
 
   /*
-     Relay actuation.
-  */
-  digitalWrite(PIN_RELAY,
-               (ts_switch &&
-                safety_temp < 55 &&
-                millis() - timing_cycle < pid_out) ? HIGH : LOW);
-  if (millis() - timing_cycle >= DUTY_CYCLE) timing_cycle = millis();
-
-  /*
-     Send data to controller
+     Send variables to controller
   */
   if (millis() - timing_temp_refresh >= REFRESH_RATE_13MIN) {
     send(msg_temp.set(room_temp, 1));
@@ -285,8 +210,9 @@ void loop()
   }
 
   /*
-     Display refresh and turn off when idle for BACKLIGHT_TIME ms.
-     When display is turned off modified data is stored.
+     Refresco del display y apagado tras un tiempo de inactividad del teclado.
+     Cuando se apaga el display se asume la finalizacion de la entrada de datos
+     mediante teclado y se envian al controlador.
   */
   if (oled.isEnabled()) {
     oled_refresh();
@@ -296,6 +222,11 @@ void loop()
       oled.setDisabled();
     }
   }
+
+  /*
+     Realizar lectura del keypad.
+     No almaceno la lectura porque uso eventos
+  */
   keypad.getKey();
 }
 
@@ -322,17 +253,10 @@ void keypadEvent(KeypadEvent key) {
 
 void oled_refresh (void) {
   oled.home();
-  oled.print(room_temp, 1); oled.println(kp_ts_switch ? F("| ON") : F("|OFF"));
-  oled.println(F("--------"));
-  oled.print(F("SP: ")); oled.println(kp_setpoint, 1);
-  int out_pcnt = (int)(pid_out / 100);
-  oled.print(F("Out: "));
-  if (out_pcnt < 10) {
-    oled.print(F("  "));
-  } else if (out_pcnt < 100) {
-    oled.print(F(" "));
-  }
-  oled.println(out_pcnt);
+  oled.print(room_temp, 1); oled.println(kp_ts_switch ? "| ON" : "|OFF");
+  oled.println("--------");
+  oled.print("SP: "); oled.println(kp_setpoint, 1);
+  oled.print("Sfty: "); oled.println(safety_temp, 0);
 }
 
 /*
