@@ -15,6 +15,8 @@
 #define MY_SIGNING_ATSHA204
 #define MY_SIGNING_REQUEST_SIGNATURES
 
+#define MY_SPLASH_SCREEN_DISABLED
+
 #include <MySensors.h>
 #include <Keypad.h>
 #include "OledDisplay.h"
