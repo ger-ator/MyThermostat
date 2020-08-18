@@ -85,8 +85,8 @@ typedef enum
   NONE,
   RECEIVED,
   PENDING
-} Echo;
-Echo setpoint_echo, ts_switch_echo = NONE;
+} Ack;
+Ack setpoint_ack, ts_switch_ack = NONE;
 
 /*
    Temporizado
@@ -102,7 +102,7 @@ unsigned long timing_cycle;
 unsigned long timing_dallas;
 unsigned long timing_lcdbacklight;
 unsigned long timing_temp_refresh;
-unsigned long timing_echo_request;
+unsigned long timing_ack_request;
 unsigned long timing_tempmode_fallback;
 
 /*
@@ -163,7 +163,7 @@ void setup()
      Initialize timing counters.
   */
   timing_dallas = timing_cycle = timing_tempmode_fallback = 0;
-  timing_temp_refresh = timing_echo_request = timing_lcdbacklight = millis();
+  timing_temp_refresh = timing_ack_request = timing_lcdbacklight = millis();
 
   /*
      Send initial status to controller.
@@ -219,16 +219,16 @@ void loop()
   }
 
   /*
-     Resend data that requested echo when echo is lost.
+     Resend data that requested ack when ack is lost.
   */
-  if (millis() - timing_echo_request >= REFRESH_RATE_2MIN) {
-    if (setpoint_echo == PENDING) {
+  if (millis() - timing_ack_request >= REFRESH_RATE_2MIN) {
+    if (setpoint_ack == PENDING) {
       send(msg_setpoint.set(setpoint, 1), REQUEST_ECHO);
     }
-    if (ts_switch_echo == PENDING)  {
+    if (ts_switch_ack == PENDING)  {
       send(msg_status.set(ts_switch), REQUEST_ECHO);
     }
-    timing_echo_request = millis();
+    timing_ack_request = millis();
   }
 
   /*
@@ -319,7 +319,7 @@ bool setSetpoint (float new_setpoint, bool fromKeyPad) {
     setpoint = new_setpoint;
     if (fromKeyPad) {
       send(msg_setpoint.set(setpoint, 1), REQUEST_ECHO);
-      setpoint_echo = PENDING;
+      setpoint_ack = PENDING;
     }
     saveFloat(EEPROM_V_SETPOINT, setpoint);
     return true;
@@ -335,7 +335,7 @@ bool setStatus (bool v_status, bool fromKeyPad) {
     ts_switch = v_status;
     if (fromKeyPad) {
       send(msg_status.set(ts_switch), REQUEST_ECHO);
-      ts_switch_echo = PENDING;
+      ts_switch_ack = PENDING;
     }
     saveState(EEPROM_V_STATUS, ts_switch);
     return true;
@@ -346,13 +346,13 @@ bool setStatus (bool v_status, bool fromKeyPad) {
 void receive(const MyMessage &message)
 {
   if (message.type == V_HVAC_SETPOINT_HEAT) {
-    if (message.isEcho())
-      setpoint_echo = RECEIVED;
+    if (message.isAck())
+      setpoint_ack = RECEIVED;
     else
       setSetpoint(message.getFloat(), false);
   } else if (message.type == V_STATUS) {
-    if (message.isEcho())
-      ts_switch_echo = RECEIVED;
+    if (message.isAck())
+      ts_switch_ack = RECEIVED;
     else
       setStatus(message.getBool(), false);
   } else if (message.type == V_TEMP) {
