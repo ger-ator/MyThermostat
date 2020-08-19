@@ -1,5 +1,5 @@
 #define SN "MyThermostat"
-#define SV "1.5"
+#define SV "1.6"
 // Enable debug prints to serial monitor
 //#define MY_DEBUG
 // Enable and select radio type attached
