@@ -1,5 +1,5 @@
 #define SN "MyThermostat"
-#define SV "1.6"
+#define SV "1.7"
 // Enable debug prints to serial monitor
 //#define MY_DEBUG
 // Enable and select radio type attached
@@ -7,6 +7,8 @@
 #define MY_RFM69_FREQUENCY RFM69_433MHZ
 #define MY_IS_RFM69HW
 #define MY_RFM69_NEW_DRIVER
+#define MY_RFM69_ATC_MODE_DISABLED
+#define MY_RFM69_TX_POWER_DBM (20)
 //Wait gateway for 5sg
 #define MY_TRANSPORT_WAIT_READY_MS 5000
 // OTA Firmware update settings
@@ -96,12 +98,14 @@ Ack setpoint_ack, ts_switch_ack = NONE;
 #define BACKLIGHT_TIME 17100 //ms
 #define REFRESH_RATE_2MIN 120000 //ms
 #define REFRESH_RATE_13MIN 780000 //ms
+#define REFRESH_RATE_59MIN 3540000 //ms
 #define TEMPMODE_FALLBACK 900000 //ms //15MIN
 
 unsigned long timing_cycle;
 unsigned long timing_dallas;
 unsigned long timing_lcdbacklight;
 unsigned long timing_temp_refresh;
+unsigned long timing_sp_refresh;
 unsigned long timing_ack_request;
 unsigned long timing_tempmode_fallback;
 
@@ -163,7 +167,7 @@ void setup()
      Initialize timing counters.
   */
   timing_dallas = timing_cycle = timing_tempmode_fallback = 0;
-  timing_temp_refresh = timing_ack_request = timing_lcdbacklight = millis();
+  timing_temp_refresh = timing_ack_request = timing_lcdbacklight = timing_sp_refresh = millis();
 
   /*
      Send initial status to controller.
@@ -216,6 +220,13 @@ void loop()
   if (millis() - timing_temp_refresh >= REFRESH_RATE_13MIN) {
     send(msg_temp.set(room_temp, 1));
     timing_temp_refresh = millis();
+  }
+  /*
+     Send room temperature to controller.
+  */
+  if (millis() - timing_sp_refresh >= REFRESH_RATE_59MIN) {
+    send(msg_setpoint.set(setpoint, 1));
+    timing_sp_refresh = millis();
   }
 
   /*
