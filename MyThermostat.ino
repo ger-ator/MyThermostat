@@ -222,7 +222,7 @@ void loop()
     timing_temp_refresh = millis();
   }
   /*
-     Send room temperature to controller.
+     Send setpoint to controller.
   */
   if (millis() - timing_sp_refresh >= REFRESH_RATE_59MIN) {
     send(msg_setpoint.set(setpoint, 1));
