@@ -184,7 +184,7 @@ void setup()
 void presentation()
 {
   sendSketchInfo(SN, SV);
-  present(0, S_HEATER);
+  present(0, S_HVAC);
 }
 
 void loop()
