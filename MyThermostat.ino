@@ -1,5 +1,5 @@
 #define SN "MyThermostat"
-#define SV "1.7"
+#define SV "1.8"
 // Enable debug prints to serial monitor
 //#define MY_DEBUG
 // Enable and select radio type attached
@@ -7,8 +7,12 @@
 #define MY_RFM69_FREQUENCY RFM69_433MHZ
 #define MY_IS_RFM69HW
 #define MY_RFM69_NEW_DRIVER
-#define MY_RFM69_ATC_MODE_DISABLED
-#define MY_RFM69_TX_POWER_DBM (20)
+//#define MY_RFM69_ATC_MODE_DISABLED
+//#define MY_RFM69_TX_POWER_DBM (20)
+#define MY_RFM69_MAX_POWER_LEVEL_DBM (20)
+#define MY_RFM69_ATC_TARGET_RSSI_DBM (-75)
+#define MY_SIGNAL_REPORT_ENABLED
+
 //Wait gateway for 5sg
 #define MY_TRANSPORT_WAIT_READY_MS 5000
 // OTA Firmware update settings
